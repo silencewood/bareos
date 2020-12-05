@@ -87,6 +87,7 @@ namespace storagedaemon {
 static char setbandwidth[] = "setbandwidth=%lld Job=%127s";
 static char setdebugv0cmd[] = "setdebug=%d trace=%d";
 static char setdebugv1cmd[] = "setdebug=%d trace=%d timestamp=%d";
+static char setdevice_autoselect[] = "setdevice device=%127s autoselect=%127s";
 static char cancelcmd[] = "cancel Job=%127s";
 static char relabelcmd[]
     = "relabel %127s OldName=%127s NewName=%127s PoolName=%127s "
@@ -111,6 +112,7 @@ static char derrmsg[] = "3900 Invalid command:";
 static char OKsetdebugv0[] = "3000 OK setdebug=%d tracefile=%s\n";
 static char OKsetdebugv1[]
     = "3000 OK setdebug=%d trace=%d timestamp=%d tracefile=%s\n";
+static char OKsetdevice[] = "3000 OK setdevice=%s autoselect=%s\n";
 static char invalid_cmd[]
     = "3997 Invalid command for a Director with Monitor directive enabled.\n";
 static char OK_bootstrap[] = "3000 OK bootstrap\n";
@@ -143,6 +145,7 @@ static bool SecureerasereqCmd(JobControlRecord* jcr);
 static bool SetbandwidthCmd(JobControlRecord* jcr);
 static bool SetdebugCmd(JobControlRecord* jcr);
 static bool UnmountCmd(JobControlRecord* jcr);
+static bool SetdeviceCmd(JobControlRecord* jcr);
 
 static DeviceControlRecord* FindDevice(JobControlRecord* jcr,
                                        PoolMem& dev_name,
@@ -199,7 +202,8 @@ static struct s_cmds cmds[] = {
     {"run", RunCmd, false},             /**< Start of Job */
     {"getSecureEraseCmd", SecureerasereqCmd, false},
     {"setbandwidth=", SetbandwidthCmd, false},
-    {"setdebug=", SetdebugCmd, false}, /**< Set debug level */
+    {"setdebug=", SetdebugCmd, false},  /**< Set debug level */
+    {"setdevice", SetdeviceCmd, false}, /**< Set device parameter */
     {"stats", StatsCmd, false},
     {"status", StatusCmd, true},
     {".status", DotstatusCmd, true},
@@ -452,6 +456,45 @@ static bool SetdebugCmd(JobControlRecord* jcr)
   } else {
     Dmsg3(50, "level=%d trace=%d\n", level, GetTrace(), tracefilename.c_str());
     return dir->fsend(OKsetdebugv0, level, tracefilename.c_str());
+  }
+}
+
+static DeviceResource* GetDeviceResource(const std::string& name)
+{
+  return static_cast<DeviceResource*>(
+      my_config->GetResWithName(R_DEVICE, name.c_str()));
+}
+
+static bool SetdeviceCmd(JobControlRecord* jcr)
+{
+  BareosSocket* dir = jcr->dir_bsock;
+
+  Dmsg1(10, "SetdeviceCmd: %s", dir->msg);
+
+  std::vector<char> device_name(128);  // trailing zero included
+  std::vector<char> autoselect_value(128);
+  int scan = sscanf(dir->msg, setdevice_autoselect, device_name.data(),
+                    autoselect_value.data());
+  if (scan != 2) {
+    dir->fsend(BADcmd, "setdevice", dir->msg);
+    return false;
+  }
+
+  auto res = GetDeviceResource(device_name.data());
+  if (res == nullptr) {
+    std::string err{"Device not found: "};
+    err += device_name.data();
+    dir->fsend(BADcmd, "setdevice", err.c_str());
+    return false;
+  }
+
+  try {
+    BoolString s{autoselect_value.data()};
+    res->autoselect = s.get<bool>();
+    if (res->dev) { res->dev->autoselect = res->autoselect; }
+    return dir->fsend(OKsetdevice, device_name.data(), s.get().c_str());
+  } catch (const std::out_of_range& e) {
+    return dir->fsend(BADcmd, "setdevice", e.what());
   }
 }
 

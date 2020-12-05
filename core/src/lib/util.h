@@ -24,6 +24,8 @@
 #include "lib/ascii_control_characters.h"
 #include "lib/message.h"
 
+#include <set>
+
 class BareosSocket;
 class ConfigurationParser;
 class QualifiedResourceNameTypeConverter;
