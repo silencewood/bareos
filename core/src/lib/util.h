@@ -75,5 +75,33 @@ void StringToLowerCase(std::string& s);
 void StringToLowerCase(std::string& out, const std::string& in);
 bool pm_append(void* pm_string, const char* fmt, ...);
 
+class BoolString {
+ public:
+  BoolString(const std::string& s) : str_value(s)
+  {
+    if (true_values.find(str_value) == true_values.end()
+        && false_values.find(str_value) == false_values.end()) {
+      std::string err = {"Wrong parameter: "};
+      throw std::out_of_range(err + str_value);
+    }
+  }
+  template <typename T = std::string>
+  T get() const
+  {
+    return str_value;
+  }
+
+ private:
+  std::string str_value;
+  const std::set<std::string> true_values{"on", "true", "yes", "1"};
+  const std::set<std::string> false_values{"off", "false", "no", "0"};
+};
+
+template <>
+inline bool BoolString::get<bool>() const
+{
+  return true_values.find(str_value) != true_values.end();
+}
+
 
 #endif  // BAREOS_LIB_UTIL_H_
